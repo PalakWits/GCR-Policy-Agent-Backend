@@ -7,14 +7,12 @@ import (
 	"gorm.io/gorm"
 
 	"adapter/internal/config"
-	catalogDomain "adapter/internal/domain/catalog_sync"
-	"adapter/internal/domain/permissions" 
-	registryHandler "adapter/internal/handlers/registry_sync"
-	registryDomain "adapter/internal/domain/registry_sync"
-	catalogSyncHandler "adapter/internal/handlers/catalog_sync"
-	catalogSyncPorts "adapter/internal/ports/catalog_sync"
-	permissionsHandler "adapter/internal/handlers/permissions"
-	permissionsPorts "adapter/internal/ports/permissions"
+	buyerDomain "adapter/internal/domain/buyer"
+	sellerDomain "adapter/internal/domain/seller"
+	buyerHandler "adapter/internal/handlers/buyer"
+	sellerHandler "adapter/internal/handlers/seller"
+	buyerPorts "adapter/internal/ports/buyer"
+	sellerPorts "adapter/internal/ports/seller"
 	"adapter/internal/shared/caching"
 	db "adapter/internal/shared/database"
 	logger "adapter/internal/shared/log"
@@ -22,13 +20,11 @@ import (
 )
 
 type Container struct {
-	Config *config.Config
-	DB     *gorm.DB
-	// RedisClient         *redis.Client
-	CacheService        caching.CacheService
-	RegistrySyncHandler *registryHandler.RegistrySyncHandler
-	PermissionsHandler  *permissionsHandler.PermissionsHandler
-	CatalogSyncHandler  *catalogSyncHandler.CatalogSyncHandler
+	Config        *config.Config
+	DB            *gorm.DB
+	CacheService  caching.CacheService
+	SellerHandler *sellerHandler.SellerHandler
+	BuyerHandler  *buyerHandler.BuyerHandler
 }
 
 func (c *Container) Shutdown(ctx context.Context) error {
@@ -39,12 +35,6 @@ func (c *Container) Shutdown(ctx context.Context) error {
 			logger.Error(ctx, err, "Failed to close database connection")
 		}
 	}
-
-	// if c.RedisClient != nil {
-	// 	if err := redisClient.Close(); err != nil {
-	// 		logger.Error(ctx, err, "Failed to close Redis connection")
-	// 	}
-	// }
 
 	logger.Info(ctx, "Container shutdown complete")
 	return nil
@@ -63,45 +53,25 @@ func InitContainer() (*Container, error) {
 		return nil, fmt.Errorf("failed to initialize database: %w", err)
 	}
 
-	// redisDB, err := redisClient.Init(cfg.RedisURL)
-	// if err != nil {
-	// 	logger.Fatal(ctx, fmt.Errorf("failed to initialize Redis: %w", err), "Redis initialization error")
-	// 	return nil, fmt.Errorf("failed to initialize Redis: %w", err)
-	// }
-
-	// Run database migrations using golang-migrate only
 	logger.Info(ctx, "Running database migrations...")
-	if err := database.AutoMigrate(&catalogSyncPorts.Seller{}, &permissionsPorts.Bap{}, &catalogSyncPorts.SellerCatalogState{}, &permissionsPorts.BapAccessPolicy{}); err != nil {
+	if err := database.AutoMigrate(&sellerPorts.Seller{}, &buyerPorts.Bap{}, &sellerPorts.SellerCatalogState{}, &buyerPorts.BapAccessPolicy{}); err != nil {
 		logger.Fatal(ctx, err, "Failed to run database migrations")
 		return nil, fmt.Errorf("failed to run database migrations: %w", err)
 	}
 	logger.Info(ctx, "Database migrations completed successfully")
 
-	// Create instances
-	// cacheService := caching.NewRedisCacheService(redisDB)
-	
-	// Catalog Sync
-	sellerRepo := catalogSyncPorts.NewGormRepository(database)
-	catalogSyncService := catalogDomain.NewCatalogSyncService(sellerRepo)
-	catalogSyncHandler := catalogSyncHandler.NewCatalogSyncHandler(catalogSyncService)
+	sellerRepo := sellerPorts.NewSellerRepository(database)
+	sellerService := sellerDomain.NewSellerService(sellerRepo, cfg)
+	sellerHandler := sellerHandler.NewSellerHandler(sellerService)
 
-	// Permissions
-	permissionsRepo := permissionsPorts.NewGormRepository(database)
-	permissionsService := permissions.NewPermissionsService(permissionsRepo)
-	permissionsHandler := permissionsHandler.NewPermissionsHandler(permissionsService)
-
-	// ONDC / Registry Sync
-	ondcService := registryDomain.NewONDCService(sellerRepo, cfg)
-	registrySyncHandler := registryHandler.NewRegistrySyncHandler(ondcService)
-
+	buyerRepo := buyerPorts.NewBuyerRepository(database)
+	buyerService := buyerDomain.NewBuyerService(buyerRepo)
+	buyerHandler := buyerHandler.NewBuyerHandler(buyerService)
 
 	return &Container{
-		Config:      cfg,
-		DB:          database,
-		// RedisClient:         redisDB,
-		// CacheService:        cacheService,
-		RegistrySyncHandler: registrySyncHandler,
-		PermissionsHandler:  permissionsHandler,
-		CatalogSyncHandler:  catalogSyncHandler,
+		Config:        cfg,
+		DB:            database,
+		SellerHandler: sellerHandler,
+		BuyerHandler:  buyerHandler,
 	}, err
 }

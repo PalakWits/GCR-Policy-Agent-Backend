@@ -1,22 +1,55 @@
-package handlers
+package seller
 
 import (
-	catalogSyncPorts "adapter/internal/ports/catalog_sync"
+	"adapter/internal/domain/seller"
+	sellerPorts "adapter/internal/ports/seller"
 	"adapter/internal/shared/constants"
 	"adapter/internal/shared/utils"
-	"github.com/gofiber/fiber/v2"
 	"gorm.io/gorm"
+
+	"github.com/gofiber/fiber/v2"
 )
 
-type CatalogSyncHandler struct {
-	service catalogSyncPorts.Service
+type SellerHandler struct {
+	sellerService *seller.SellerService
 }
 
-func NewCatalogSyncHandler(service catalogSyncPorts.Service) *CatalogSyncHandler {
-	return &CatalogSyncHandler{service: service}
+func NewSellerHandler(sellerService *seller.SellerService) *SellerHandler {
+	return &SellerHandler{sellerService: sellerService}
 }
 
-func (h *CatalogSyncHandler) GetPendingCatalogSyncSellers(c *fiber.Ctx) error {
+func (h *SellerHandler) SyncRegistry(c *fiber.Ctx) error {
+	var req sellerPorts.SellerRegistrySyncRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(utils.ApiResponse{
+			Success: false,
+			Message: constants.ErrInvalidRequestBody,
+		})
+	}
+
+	if req.RegistryEnv == "" || len(req.Domains) == 0 {
+		return c.Status(fiber.StatusBadRequest).JSON(utils.ApiResponse{
+			Success: false,
+			Message: "registry_env and domains are required",
+		})
+	}
+
+	response, err := h.sellerService.SyncRegistry(req)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(utils.ApiResponse{
+			Success: false,
+			Message: constants.ErrFailedToStartRegistrySync,
+		})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(utils.ApiResponse{
+		Success: true,
+		Message: "Registry sync completed successfully",
+		Data:    response,
+	})
+}
+
+func (h *SellerHandler) GetPendingCatalogSyncSellers(c *fiber.Ctx) error {
 	domain := c.Query("domain")
 	if domain == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(utils.ApiResponse{
@@ -33,7 +66,7 @@ func (h *CatalogSyncHandler) GetPendingCatalogSyncSellers(c *fiber.Ctx) error {
 		offset = 0
 	}
 
-	response, err := h.service.GetPendingCatalogSyncSellers(domain, registryEnv, status, limit, page, offset)
+	response, err := h.sellerService.GetPendingCatalogSyncSellers(domain, registryEnv, status, limit, page, offset)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(utils.ApiResponse{
 			Success: false,
@@ -47,7 +80,7 @@ func (h *CatalogSyncHandler) GetPendingCatalogSyncSellers(c *fiber.Ctx) error {
 	})
 }
 
-func (h *CatalogSyncHandler) GetSyncStatus(c *fiber.Ctx) error {
+func (h *SellerHandler) GetSyncStatus(c *fiber.Ctx) error {
 	sellerID := c.Params("seller_id")
 	domain := c.Query("domain")
 	registryEnv := c.Query("registry_env", "preprod") // Default to "preprod"
@@ -59,7 +92,7 @@ func (h *CatalogSyncHandler) GetSyncStatus(c *fiber.Ctx) error {
 		})
 	}
 
-	response, err := h.service.GetSyncStatus(sellerID, domain, registryEnv)
+	response, err := h.sellerService.GetSyncStatus(sellerID, domain, registryEnv)
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return c.Status(fiber.StatusNotFound).JSON(utils.ApiResponse{

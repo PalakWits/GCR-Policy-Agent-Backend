@@ -1,6 +1,20 @@
-package ports
+package seller
 
 import "time"
+
+type AccessDecision string
+type DecisionSource string
+
+const (
+	DecisionAllowed AccessDecision = "ALLOWED"
+	DecisionDenied  AccessDecision = "DENIED"
+)
+
+const (
+	SourceSellerAck      DecisionSource = "SELLER_ACK"
+	SourceSellerNack     DecisionSource = "SELLER_NACK"
+	SourceManualOverride DecisionSource = "MANUAL_OVERRIDE"
+)
 
 type Seller struct {
 	SellerID      string    `json:"seller_id" gorm:"primaryKey;column:seller_id;type:text"`

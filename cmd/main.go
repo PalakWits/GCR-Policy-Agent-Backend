@@ -39,16 +39,9 @@ func main() {
 		return c.JSON(fiber.Map{"status": "ok", "service": container.Config.OtelService})
 	})
 
-	// routes
-	routes := app.Group("/v1")
-	routes.Post("/permissions", container.PermissionsHandler.UpdatePermissions)
-	routes.Post("/permissions/query", container.PermissionsHandler.QueryPermissions)
-	routes.Get("/catalog-sync/sellers/:seller_id", container.CatalogSyncHandler.GetSyncStatus)
-	routes.Get("/catalog-sync/pending", container.CatalogSyncHandler.GetPendingCatalogSyncSellers)
-
-	// Internal routes (nested under /v1)
-	internal := routes.Group("/internal")
-	internal.Post("/registry-sync", container.RegistrySyncHandler.SyncRegistry)
+	// Register routes
+	container.SellerHandler.RegisterRoutes(app)
+	container.BuyerHandler.RegisterRoutes(app)
 
 	port := container.Config.Port
 

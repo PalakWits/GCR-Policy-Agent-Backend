@@ -29,24 +29,23 @@ func NewCustomError(httpStatusCode int, code, message string) *CustomError {
 // Pre-defined application errors
 var (
 	// Generic Errors
-	ErrInvalidRequestBody = NewCustomError(400, "GEN_4001", "Request body is not valid")
-	ErrInternalServer     = NewCustomError(500, "GEN_5001", "An unexpected internal server error occurred")
+	ErrInvalidRequestBody       = NewCustomError(400, "GEN_4001", "Request body is not valid")
+	ErrInternalServer           = NewCustomError(500, "GEN_5001", "An unexpected internal server error occurred")
 	ErrDatabaseConnectionFailed = NewCustomError(500, "DB_5001", "Failed to connect to the database")
 
 	// Catalog Sync Errors
-	ErrDomainRequired     = NewCustomError(400, "CAT_4001", "domain query parameter is required")
-	ErrSellerAndDomain    = NewCustomError(400, "CAT_4002", "seller_id path parameter and domain query parameter are required")
-	ErrRecordNotFound     = NewCustomError(404, "CAT_4004", "Record not found for the specified parameters")
-	ErrGetPendingSellers  = NewCustomError(500, "CAT_5001", "Failed to get pending catalog sync sellers")
-	ErrGetSyncStatus      = NewCustomError(500, "CAT_5002", "Failed to get sync status")
-	
+	ErrDomainRequired    = NewCustomError(400, "CAT_4001", "domain query parameter is required")
+	ErrSellerAndDomain   = NewCustomError(400, "CAT_4002", "seller_id path parameter and domain query parameter are required")
+	ErrRecordNotFound    = NewCustomError(404, "CAT_4004", "Record not found for the specified parameters")
+	ErrGetPendingSellers = NewCustomError(500, "CAT_5001", "Failed to get pending catalog sync sellers")
+	ErrGetSyncStatus     = NewCustomError(500, "CAT_5002", "Failed to get sync status")
+
 	// Permissions Errors
 	ErrProcessingPermissions = NewCustomError(500, "PERM_5001", "Error processing permissions request")
 
 	// Registry Sync Errors
 	ErrRegistrySync = NewCustomError(500, "REG_5001", "Failed to start registry sync")
 )
-
 
 // ErrorHandler is a custom Fiber error handler.
 func ErrorHandler() fiber.ErrorHandler {

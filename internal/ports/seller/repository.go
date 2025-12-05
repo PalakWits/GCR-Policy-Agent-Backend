@@ -1,4 +1,4 @@
-package ports
+package seller
 
 type SellerRepository interface {
 	InsertSellers(sellers []Seller) error

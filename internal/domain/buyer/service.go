@@ -1,34 +1,35 @@
-package permissions
+package buyer
 
 import (
-	ports "adapter/internal/ports/permissions"
+	buyerPorts "adapter/internal/ports/buyer"
+	sellerPorts "adapter/internal/ports/seller"
 
 	"gorm.io/gorm"
 	"time"
 )
 
-type PermissionsService struct {
-	repo ports.PermissionsRepository
+type BuyerService struct {
+	repo buyerPorts.PermissionsRepository
 }
 
-func NewPermissionsService(repo ports.PermissionsRepository) *PermissionsService {
-	return &PermissionsService{repo: repo}
+func NewBuyerService(repo buyerPorts.PermissionsRepository) *BuyerService {
+	return &BuyerService{repo: repo}
 }
 
-func (s *PermissionsService) UpdatePermissions(updates []ports.PermissionsUpdateRequest) ([]ports.PermissionsUpdateResponse, error) {
-	var results []ports.PermissionsUpdateResponse
-	var policiesToUpsert []ports.BapAccessPolicy
-	bapsToUpsert := make(map[string]ports.Bap)
+func (s *BuyerService) UpdateBapAccessPermissions(updates []sellerPorts.SellerPermissionsUpdateRequest) ([]sellerPorts.SellerPermissionsUpdateResponse, error) {
+	var results []sellerPorts.SellerPermissionsUpdateResponse
+	var policiesToUpsert []buyerPorts.BapAccessPolicy
+	bapsToUpsert := make(map[string]buyerPorts.Bap)
 
 	for _, update := range updates {
 		// Prepare BapAccessPolicy for upsert
-		policy := ports.BapAccessPolicy{
+		policy := buyerPorts.BapAccessPolicy{
 			SellerID:       update.SellerID,
 			Domain:         update.Domain,
 			RegistryEnv:    update.RegistryEnv,
 			BapID:          update.BapID,
-			Decision:       ports.AccessDecision(update.Decision),
-			DecisionSource: ports.DecisionSource(update.DecisionSource),
+			Decision:       sellerPorts.AccessDecision(update.Decision),
+			DecisionSource: sellerPorts.DecisionSource(update.DecisionSource),
 			DecidedAt:      time.Now(),
 			ExpiresAt:      update.ExpiresAt,
 			Reason:         update.Reason,
@@ -37,10 +38,10 @@ func (s *PermissionsService) UpdatePermissions(updates []ports.PermissionsUpdate
 
 		// Collect unique BAPs to ensure they exist in the `baps` table
 		if _, exists := bapsToUpsert[update.BapID]; !exists {
-			bapsToUpsert[update.BapID] = ports.Bap{BapID: update.BapID}
+			bapsToUpsert[update.BapID] = buyerPorts.Bap{BapID: update.BapID}
 		}
 
-		results = append(results, ports.PermissionsUpdateResponse{
+		results = append(results, sellerPorts.SellerPermissionsUpdateResponse{
 			SellerID:    update.SellerID,
 			Domain:      update.Domain,
 			RegistryEnv: update.RegistryEnv,
@@ -68,14 +69,14 @@ func (s *PermissionsService) UpdatePermissions(updates []ports.PermissionsUpdate
 	return results, nil
 }
 
-func (s *PermissionsService) QueryPermissions(req ports.PermissionsQueryRequest) (*ports.PermissionsQueryResponse, error) {
+func (s *BuyerService) QueryBapAccessPermissions(req buyerPorts.BapPermissionsQueryRequest) (*buyerPorts.BapPermissionsQueryResponse, error) {
 	bapStatus := ""
 	bap, err := s.repo.FindBapByID(req.BapID)
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
 			bapStatus = "NEW_BAP"
 			// Create the BAP
-			bapsToUpsert := map[string]ports.Bap{req.BapID: {BapID: req.BapID}}
+			bapsToUpsert := map[string]buyerPorts.Bap{req.BapID: {BapID: req.BapID}}
 			if err := s.repo.UpsertBaps(bapsToUpsert); err != nil {
 				return nil, err
 			}
@@ -86,7 +87,7 @@ func (s *PermissionsService) QueryPermissions(req ports.PermissionsQueryRequest)
 		bapStatus = "EXISTING_BAP"
 		// Update last_seen_at
 		bap.LastSeenAt = time.Now()
-		bapsToUpsert := map[string]ports.Bap{req.BapID: *bap}
+		bapsToUpsert := map[string]buyerPorts.Bap{req.BapID: *bap}
 		if err := s.repo.UpsertBaps(bapsToUpsert); err != nil {
 			return nil, err
 		}
@@ -97,15 +98,15 @@ func (s *PermissionsService) QueryPermissions(req ports.PermissionsQueryRequest)
 		return nil, err
 	}
 
-	policyMap := make(map[string]ports.BapAccessPolicy)
+	policyMap := make(map[string]buyerPorts.BapAccessPolicy)
 	for _, p := range policies {
 		policyMap[p.SellerID] = p
 	}
 
-	var permissions []ports.PermissionDetail
+	var permissions []sellerPorts.SellerPermissionDetail
 	for _, sellerID := range req.SellerIDs {
 		if policy, ok := policyMap[sellerID]; ok {
-			permissions = append(permissions, ports.PermissionDetail{
+			permissions = append(permissions, sellerPorts.SellerPermissionDetail{
 				SellerID:       policy.SellerID,
 				Domain:         policy.Domain,
 				RegistryEnv:    policy.RegistryEnv,
@@ -116,7 +117,7 @@ func (s *PermissionsService) QueryPermissions(req ports.PermissionsQueryRequest)
 				ExpiresAt:      policy.ExpiresAt,
 			})
 		} else if req.IncludeNoPolicy {
-			permissions = append(permissions, ports.PermissionDetail{
+			permissions = append(permissions, sellerPorts.SellerPermissionDetail{
 				SellerID:    sellerID,
 				Domain:      req.Domain,
 				RegistryEnv: req.RegistryEnv,
@@ -126,7 +127,7 @@ func (s *PermissionsService) QueryPermissions(req ports.PermissionsQueryRequest)
 		}
 	}
 
-	return &ports.PermissionsQueryResponse{
+	return &buyerPorts.BapPermissionsQueryResponse{
 		BapStatus:   bapStatus,
 		Domain:      req.Domain,
 		RegistryEnv: req.RegistryEnv,

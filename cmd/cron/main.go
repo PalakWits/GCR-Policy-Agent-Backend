@@ -5,9 +5,8 @@ import (
 	"flag"
 
 	"adapter/internal/config"
-	registryDomain "adapter/internal/domain/registry_sync"
-	catalogPorts "adapter/internal/ports/catalog_sync"
-	registryPorts "adapter/internal/ports/registry_sync"
+	sellerDomain "adapter/internal/domain/seller"
+	sellerPorts "adapter/internal/ports/seller"
 	"adapter/internal/shared/database"
 	"adapter/internal/shared/log"
 
@@ -42,13 +41,13 @@ func main() {
 	}
 
 	// Create repository and service
-	sellerRepo := catalogPorts.NewGormRepository(db)
-	ondcService := registryDomain.NewONDCService(sellerRepo, cfg)
+	sellerRepo := sellerPorts.NewSellerRepository(db)
+	sellerService := sellerDomain.NewSellerService(sellerRepo, cfg)
 
 	// If the -run-now flag is provided, run the job once and exit
 	if *runNow {
 		log.Info(ctx, "Starting ONDC seller lookup job manually...")
-		_, err := ondcService.SyncRegistry(registryPorts.SyncRegistryRequest{
+		_, err := sellerService.SyncRegistry(sellerPorts.SellerRegistrySyncRequest{
 			RegistryEnv: cfg.RegistryEnv,
 			Domains:     cfg.Domains,
 		})
@@ -67,7 +66,7 @@ func main() {
 	// Schedule the job to run every 6 hours
 	c.AddFunc("@every 6h", func() {
 		log.Info(ctx, "Starting ONDC seller lookup cron job...")
-		_, err := ondcService.SyncRegistry(registryPorts.SyncRegistryRequest{
+		_, err := sellerService.SyncRegistry(sellerPorts.SellerRegistrySyncRequest{
 			RegistryEnv: cfg.RegistryEnv,
 			Domains:     cfg.Domains,
 		})

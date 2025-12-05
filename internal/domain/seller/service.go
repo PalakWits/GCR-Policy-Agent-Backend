@@ -1,65 +1,31 @@
-package domain
+package seller
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"adapter/internal/config"
-	registryPorts "adapter/internal/ports/registry_sync"
-	catalogPorts "adapter/internal/ports/catalog_sync"
+	sellerPorts "adapter/internal/ports/seller"
 	"adapter/internal/shared/crypto"
 	"adapter/internal/shared/log"
+
 	"github.com/go-resty/resty/v2"
+	"gorm.io/gorm"
 )
 
-type ONDCLookupRequest struct {
-	Country string `json:"country"`
-	Type    string `json:"type"`
-	Domain  string `json:"domain"`
-}
-
-type Subscriber struct {
-	SubscriberID  string `json:"subscriber_id"`
-	UkID          string `json:"ukId"`
-	BrID          string `json:"br_id"`
-	Domain        string `json:"domain"`
-	Country       string `json:"country"`
-	City          string `json:"city"`
-	SigningKey    string `json:"signing_public_key"`
-	EncryptionKey string `json:"encr_public_key"`
-	Status        string `json:"status"`
-	ValidFrom     string `json:"valid_from"`
-	ValidUntil    string `json:"valid_until"`
-	Created       string `json:"created"`
-	Updated       string `json:"updated"`
-}
-
-type ONDCLookupResponse []Subscriber
-
-type ONDCService struct {
-	client       *resty.Client
-	crypto       *crypto.ONDCCrypto
-	sellerRepo   catalogPorts.SellerRepository
-	domains      []string
-	registryURL  string
-	privateKey   string
-	subscriberID string
-	uniqueKeyID  string
-	registryEnv  string
-}
-
-func NewONDCService(sellerRepo catalogPorts.SellerRepository, cfg *config.Config) *ONDCService {
+func NewSellerService(repo sellerPorts.SellerRepository, cfg *config.Config) *SellerService {
 	client := resty.New()
 	client.SetTimeout(30 * time.Second)
 	client.SetRetryCount(3)
 	client.SetRetryWaitTime(5 * time.Second)
 
-	return &ONDCService{
+	return &SellerService{
+		repo:         repo,
 		client:       client,
 		crypto:       crypto.NewONDCCrypto(),
-		sellerRepo:   sellerRepo,
 		domains:      cfg.Domains,
 		registryURL:  cfg.RegistryURL,
 		privateKey:   cfg.PrivateKey,
@@ -69,16 +35,82 @@ func NewONDCService(sellerRepo catalogPorts.SellerRepository, cfg *config.Config
 	}
 }
 
-func (s *ONDCService) SyncRegistry(req registryPorts.SyncRegistryRequest) (*registryPorts.SyncRegistryResponse, error) {
+func (s *SellerService) GetPendingCatalogSyncSellers(domain, registryEnv, status string, limit, page, offset int) (*sellerPorts.SellerPendingCatalogSyncResponse, error) {
+	sellers, err := s.repo.GetPendingSellers(domain, registryEnv, status, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+
+	hasMore := len(sellers) > limit
+	if hasMore {
+		sellers = sellers[:limit] // Trim the extra record fetched for hasMore check
+	}
+
+	var statusFilter []string
+	if status == "" {
+		statusFilter = []string{"NOT_SYNCED", "FAILED"}
+	} else {
+		statusFilter = strings.Split(status, ",")
+	}
+
+	return &sellerPorts.SellerPendingCatalogSyncResponse{
+		Domain:       domain,
+		RegistryEnv:  registryEnv,
+		StatusFilter: statusFilter,
+		Sellers:      sellers,
+		Page: sellerPorts.PageInfo{
+			Limit:   limit,
+			Page:    page,
+			HasMore: hasMore,
+		},
+	}, nil
+}
+
+func (s *SellerService) GetSyncStatus(sellerID, domain, registryEnv string) (*sellerPorts.SellerCatalogSyncStatusResponse, error) {
+	seller, err := s.repo.GetSellerByID(sellerID, domain, registryEnv)
+	if err != nil {
+		return nil, err // Could be gorm.ErrRecordNotFound
+	}
+
+	state, err := s.repo.GetSellerCatalogState(sellerID, domain, registryEnv)
+	if err != nil && err != gorm.ErrRecordNotFound {
+		return nil, err
+	}
+
+	// If state is not found, we still return a response but with default/empty values for state fields
+	if err == gorm.ErrRecordNotFound {
+		return &sellerPorts.SellerCatalogSyncStatusResponse{
+			SellerID:           seller.SellerID,
+			Domain:             seller.Domain,
+			RegistryEnv:        seller.RegistryEnv,
+			Status:             string(sellerPorts.CatalogStatusNotSynced), // Default status
+			RegistryLastSeenAt: seller.LastSeenInReg,
+		}, nil
+	}
+
+	return &sellerPorts.SellerCatalogSyncStatusResponse{
+		SellerID:           state.SellerID,
+		Domain:             state.Domain,
+		RegistryEnv:        state.RegistryEnv,
+		Status:             string(state.Status),
+		LastPullAt:         state.LastPullAt,
+		LastSuccessAt:      state.LastSuccessAt,
+		LastError:          state.LastError,
+		SyncVersion:        state.SyncVersion,
+		RegistryLastSeenAt: seller.LastSeenInReg,
+	}, nil
+}
+
+func (s *SellerService) SyncRegistry(req sellerPorts.SellerRegistrySyncRequest) (*sellerPorts.SellerRegistrySyncResponse, error) {
 	runAt := time.Now()
-	response := &registryPorts.SyncRegistryResponse{
+	response := &sellerPorts.SellerRegistrySyncResponse{
 		RegistryEnv: req.RegistryEnv,
 		RunAt:       runAt.Format(time.RFC3339),
-		Domains:     []registryPorts.DomainSyncSummary{},
+		Domains:     []sellerPorts.SellerDomainSyncSummary{},
 	}
 
 	for _, domain := range req.Domains {
-		summary := registryPorts.DomainSyncSummary{Domain: domain}
+		summary := sellerPorts.SellerDomainSyncSummary{Domain: domain}
 
 		registrySellers, err := s.FetchSellersFromRegistry(domain)
 		if err != nil {
@@ -87,20 +119,20 @@ func (s *ONDCService) SyncRegistry(req registryPorts.SyncRegistryRequest) (*regi
 		}
 		summary.TotalSellersInRegistry = len(registrySellers)
 
-		dbSellers, err := s.sellerRepo.GetSellersByDomainAndRegistry(domain, req.RegistryEnv)
+		dbSellers, err := s.repo.GetSellersByDomainAndRegistry(domain, req.RegistryEnv)
 		if err != nil {
 			log.Error(context.Background(), err, fmt.Sprintf("Failed to fetch sellers from DB for domain %s", domain))
 			continue
 		}
 
-		registrySellerMap := make(map[string]catalogPorts.Seller)
+		registrySellerMap := make(map[string]sellerPorts.Seller)
 		now := time.Now()
 		for _, sub := range registrySellers {
 			validFrom, _ := time.Parse(time.RFC3339, sub.ValidFrom)
 			validUntil, _ := time.Parse(time.RFC3339, sub.ValidUntil)
 			raw, _ := json.Marshal(sub)
 
-			seller := catalogPorts.Seller{
+			seller := sellerPorts.Seller{
 				SellerID: sub.SubscriberID, Domain: sub.Domain, RegistryEnv: req.RegistryEnv,
 				Status: sub.Status, Type: "BPP", SubscriberURL: sub.SubscriberID,
 				Country: sub.Country, City: sub.City, ValidFrom: validFrom, ValidUntil: validUntil,
@@ -109,13 +141,13 @@ func (s *ONDCService) SyncRegistry(req registryPorts.SyncRegistryRequest) (*regi
 			registrySellerMap[seller.SellerID] = seller
 		}
 
-		dbSellerMap := make(map[string]catalogPorts.Seller)
+		dbSellerMap := make(map[string]sellerPorts.Seller)
 		for _, seller := range dbSellers {
 			dbSellerMap[seller.SellerID] = seller
 		}
 
-		var sellersToInsert []catalogPorts.Seller
-		var sellersToUpdate []catalogPorts.Seller
+		var sellersToInsert []sellerPorts.Seller
+		var sellersToUpdate []sellerPorts.Seller
 		var removedSellerIDs []string
 
 		for id, seller := range registrySellerMap {
@@ -137,26 +169,26 @@ func (s *ONDCService) SyncRegistry(req registryPorts.SyncRegistryRequest) (*regi
 		summary.DeactivatedSellers = len(removedSellerIDs)
 
 		if len(sellersToInsert) > 0 {
-			if err := s.sellerRepo.InsertSellers(sellersToInsert); err != nil {
+			if err := s.repo.InsertSellers(sellersToInsert); err != nil {
 				log.Error(context.Background(), err, "Failed to insert new sellers")
 			}
 		}
 		if len(sellersToUpdate) > 0 {
-			if err := s.sellerRepo.UpdateSellers(sellersToUpdate); err != nil {
+			if err := s.repo.UpdateSellers(sellersToUpdate); err != nil {
 				log.Error(context.Background(), err, "Failed to update existing sellers")
 			}
 		}
 		for _, seller := range sellersToInsert {
-			state := &catalogPorts.SellerCatalogState{
+			state := &sellerPorts.SellerCatalogState{
 				SellerID: seller.SellerID, Domain: domain, RegistryEnv: req.RegistryEnv,
-				Status: catalogPorts.CatalogStatusNotSynced,
+				Status: sellerPorts.CatalogStatusNotSynced,
 			}
-			if err := s.sellerRepo.UpsertCatalogState(state); err != nil {
+			if err := s.repo.UpsertCatalogState(state); err != nil {
 				log.Error(context.Background(), err, "Failed to insert catalog state")
 			}
 		}
 		if len(removedSellerIDs) > 0 {
-			if err := s.sellerRepo.DeactivateSellers(removedSellerIDs, domain, req.RegistryEnv); err != nil {
+			if err := s.repo.DeactivateSellers(removedSellerIDs, domain, req.RegistryEnv); err != nil {
 				log.Error(context.Background(), err, "Failed to deactivate sellers")
 			}
 		}
@@ -165,7 +197,7 @@ func (s *ONDCService) SyncRegistry(req registryPorts.SyncRegistryRequest) (*regi
 	return response, nil
 }
 
-func (s *ONDCService) FetchSellersFromRegistry(domain string) (ONDCLookupResponse, error) {
+func (s *SellerService) FetchSellersFromRegistry(domain string) (ONDCLookupResponse, error) {
 	reqBody := ONDCLookupRequest{Country: "IND", Type: "BPP", Domain: domain}
 	authHeader, err := s.generateAuthHeader(reqBody)
 	if err != nil {
@@ -187,7 +219,7 @@ func (s *ONDCService) FetchSellersFromRegistry(domain string) (ONDCLookupRespons
 	return response, nil
 }
 
-func (s *ONDCService) generateAuthHeader(body ONDCLookupRequest) (string, error) {
+func (s *SellerService) generateAuthHeader(body ONDCLookupRequest) (string, error) {
 	payload, err := json.Marshal(body)
 	if err != nil {
 		return "", err

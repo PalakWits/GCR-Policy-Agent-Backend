@@ -1,24 +1,26 @@
-package handlers
+package buyer
 
 import (
-	"adapter/internal/domain/permissions"
-	permissionPorts "adapter/internal/ports/permissions"
+	buyerDomain "adapter/internal/domain/buyer"
+	buyerPorts "adapter/internal/ports/buyer"
+	sellerPorts "adapter/internal/ports/seller"
 	"adapter/internal/shared/constants"
 	"adapter/internal/shared/utils"
+
 	"github.com/gofiber/fiber/v2"
 )
 
-type PermissionsHandler struct {
-	permissionsService *permissions.PermissionsService
+type BuyerHandler struct {
+	permissionsService *buyerDomain.BuyerService
 }
 
-func NewPermissionsHandler(permissionsService *permissions.PermissionsService) *PermissionsHandler {
-	return &PermissionsHandler{permissionsService: permissionsService}
+func NewBuyerHandler(permissionsService *buyerDomain.BuyerService) *BuyerHandler {
+	return &BuyerHandler{permissionsService: permissionsService}
 }
 
-func (h *PermissionsHandler) UpdatePermissions(c *fiber.Ctx) error {
+func (h *BuyerHandler) UpdateBapAccessPermissions(c *fiber.Ctx) error {
 	var req struct {
-		Updates []permissionPorts.PermissionsUpdateRequest `json:"updates"`
+		Updates []sellerPorts.SellerPermissionsUpdateRequest `json:"updates"`
 	}
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(utils.ApiResponse{
@@ -34,7 +36,7 @@ func (h *PermissionsHandler) UpdatePermissions(c *fiber.Ctx) error {
 		})
 	}
 
-	results, err := h.permissionsService.UpdatePermissions(req.Updates)
+	results, err := h.permissionsService.UpdateBapAccessPermissions(req.Updates)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(utils.ApiResponse{
 			Success: false,
@@ -49,8 +51,8 @@ func (h *PermissionsHandler) UpdatePermissions(c *fiber.Ctx) error {
 	})
 }
 
-func (h *PermissionsHandler) QueryPermissions(c *fiber.Ctx) error {
-	var req permissionPorts.PermissionsQueryRequest
+func (h *BuyerHandler) QueryBapAccessPermissions(c *fiber.Ctx) error {
+	var req buyerPorts.BapPermissionsQueryRequest
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(utils.ApiResponse{
 			Success: false,
@@ -65,7 +67,7 @@ func (h *PermissionsHandler) QueryPermissions(c *fiber.Ctx) error {
 		})
 	}
 
-	response, err := h.permissionsService.QueryPermissions(req)
+	response, err := h.permissionsService.QueryBapAccessPermissions(req)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(utils.ApiResponse{
 			Success: false,

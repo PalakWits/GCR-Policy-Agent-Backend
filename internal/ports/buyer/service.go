@@ -1,19 +1,19 @@
-package ports
+package buyer
 
 import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
 
-type GormRepository struct {
+type BuyerRepository struct {
 	db *gorm.DB
 }
 
-func NewGormRepository(db *gorm.DB) *GormRepository {
-	return &GormRepository{db: db}
+func NewBuyerRepository(db *gorm.DB) *BuyerRepository {
+	return &BuyerRepository{db: db}
 }
 
-func (r *GormRepository) UpsertBaps(baps map[string]Bap) error {
+func (r *BuyerRepository) UpsertBaps(baps map[string]Bap) error {
 	var bapList []Bap
 	for _, b := range baps {
 		bapList = append(bapList, b)
@@ -24,13 +24,13 @@ func (r *GormRepository) UpsertBaps(baps map[string]Bap) error {
 	}).Create(&bapList).Error
 }
 
-func (r *GormRepository) UpsertBapAccessPolicies(policies []BapAccessPolicy) error {
+func (r *BuyerRepository) UpsertBapAccessPolicies(policies []BapAccessPolicy) error {
 	return r.db.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "seller_id"}, {Name: "domain"}, {Name: "registry_env"}, {Name: "bap_id"}},
 		DoUpdates: clause.AssignmentColumns([]string{"decision", "decision_source", "decided_at", "expires_at", "reason", "updated_at"}),
 	}).Create(&policies).Error
 }
-func (r *GormRepository) FindBapByID(bapID string) (*Bap, error) {
+func (r *BuyerRepository) FindBapByID(bapID string) (*Bap, error) {
 	var bap Bap
 	if err := r.db.First(&bap, "bap_id = ?", bapID).Error; err != nil {
 		return nil, err
@@ -38,7 +38,7 @@ func (r *GormRepository) FindBapByID(bapID string) (*Bap, error) {
 	return &bap, nil
 }
 
-func (r *GormRepository) QueryBapAccessPolicies(bapID, domain, registryEnv string, sellerIDs []string) ([]BapAccessPolicy, error) {
+func (r *BuyerRepository) QueryBapAccessPolicies(bapID, domain, registryEnv string, sellerIDs []string) ([]BapAccessPolicy, error) {
 	var policies []BapAccessPolicy
 	if err := r.db.Where("bap_id = ? AND domain = ? AND registry_env = ? AND seller_id IN ?", bapID, domain, registryEnv, sellerIDs).Find(&policies).Error; err != nil {
 		return nil, err

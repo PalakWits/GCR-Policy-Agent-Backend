@@ -1,4 +1,4 @@
-package ports
+package buyer
 
 type PermissionsRepository interface {
 	UpsertBaps(baps map[string]Bap) error
