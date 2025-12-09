@@ -8,7 +8,6 @@ import (
 type BapPermissionsQueryRequest struct {
 	BapID           string   `json:"bap_id"`
 	Domain          string   `json:"domain"`
-	RegistryEnv     string   `json:"registry_env"`
 	SellerIDs       []string `json:"seller_ids"`
 	IncludeNoPolicy bool     `json:"include_no_policy"`
 }
@@ -17,6 +16,5 @@ type BapPermissionsQueryRequest struct {
 type BapPermissionsQueryResponse struct {
 	BapStatus   string                          `json:"bap_status"`
 	Domain      string                          `json:"domain"`
-	RegistryEnv string                          `json:"registry_env"`
 	Permissions []seller.SellerPermissionDetail `json:"permissions"`
 }

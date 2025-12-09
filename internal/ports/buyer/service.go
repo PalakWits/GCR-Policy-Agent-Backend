@@ -26,7 +26,7 @@ func (r *BuyerRepository) UpsertBaps(baps map[string]Bap) error {
 
 func (r *BuyerRepository) UpsertBapAccessPolicies(policies []BapAccessPolicy) error {
 	return r.db.Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "seller_id"}, {Name: "domain"}, {Name: "registry_env"}, {Name: "bap_id"}},
+		Columns:   []clause.Column{{Name: "seller_id"}, {Name: "domain"}, {Name: "bap_id"}},
 		DoUpdates: clause.AssignmentColumns([]string{"decision", "decision_source", "decided_at", "expires_at", "reason", "updated_at"}),
 	}).Create(&policies).Error
 }
@@ -38,10 +38,37 @@ func (r *BuyerRepository) FindBapByID(bapID string) (*Bap, error) {
 	return &bap, nil
 }
 
-func (r *BuyerRepository) QueryBapAccessPolicies(bapID, domain, registryEnv string, sellerIDs []string) ([]BapAccessPolicy, error) {
+func (r *BuyerRepository) QueryBapAccessPolicies(bapID, domain string, sellerIDs []string) ([]BapAccessPolicy, error) {
 	var policies []BapAccessPolicy
-	if err := r.db.Where("bap_id = ? AND domain = ? AND registry_env = ? AND seller_id IN ?", bapID, domain, registryEnv, sellerIDs).Find(&policies).Error; err != nil {
+	if err := r.db.Where("bap_id = ? AND domain = ? AND seller_id IN ?", bapID, domain, sellerIDs).Find(&policies).Error; err != nil {
 		return nil, err
 	}
 	return policies, nil
+}
+
+func (r *BuyerRepository) GetBapPolicy(bapID string) (*BapAccessPolicy, error) {
+	var policy BapAccessPolicy
+	if err := r.db.Where("bap_id = ?", bapID).First(&policy).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &policy, nil
+}
+
+func (r *BuyerRepository) CreatePermissionsJob(job *PermissionsJob) error {
+	return r.db.Create(job).Error
+}
+
+func (r *BuyerRepository) UpdatePermissionsJobStatus(bapID, status string) error {
+	return r.db.Model(&PermissionsJob{}).Where("bap_id = ?", bapID).Update("status", status).Error
+}
+
+func (r *BuyerRepository) GetPermissionsJobStatus(bapID string) (*PermissionsJob, error) {
+	var job PermissionsJob
+	if err := r.db.Where("bap_id = ?", bapID).First(&job).Error; err != nil {
+		return nil, err
+	}
+	return &job, nil
 }

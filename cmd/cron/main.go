@@ -48,8 +48,7 @@ func main() {
 	if *runNow {
 		log.Info(ctx, "Starting ONDC seller lookup job manually...")
 		_, err := sellerService.SyncRegistry(sellerPorts.SellerRegistrySyncRequest{
-			RegistryEnv: cfg.RegistryEnv,
-			Domains:     cfg.Domains,
+			Domains: cfg.Domains,
 		})
 		if err != nil {
 			log.Error(ctx, err, "ONDC seller lookup cron job failed")
@@ -67,8 +66,7 @@ func main() {
 	c.AddFunc("@every 6h", func() {
 		log.Info(ctx, "Starting ONDC seller lookup cron job...")
 		_, err := sellerService.SyncRegistry(sellerPorts.SellerRegistrySyncRequest{
-			RegistryEnv: cfg.RegistryEnv,
-			Domains:     cfg.Domains,
+			Domains: cfg.Domains,
 		})
 		if err != nil {
 			log.Error(ctx, err, "ONDC seller lookup cron job failed")

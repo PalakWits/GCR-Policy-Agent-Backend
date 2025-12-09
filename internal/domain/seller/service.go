@@ -31,12 +31,11 @@ func NewSellerService(repo sellerPorts.SellerRepository, cfg *config.Config) *Se
 		privateKey:   cfg.PrivateKey,
 		subscriberID: cfg.SubscriberID,
 		uniqueKeyID:  cfg.UniqueKeyID,
-		registryEnv:  cfg.RegistryEnv,
 	}
 }
 
-func (s *SellerService) GetPendingCatalogSyncSellers(domain, registryEnv, status string, limit, page, offset int) (*sellerPorts.SellerPendingCatalogSyncResponse, error) {
-	sellers, err := s.repo.GetPendingSellers(domain, registryEnv, status, limit, offset)
+func (s *SellerService) GetPendingCatalogSyncSellers(domain, status string, limit, page, offset int) (*sellerPorts.SellerPendingCatalogSyncResponse, error) {
+	sellers, err := s.repo.GetPendingSellers(domain, status, limit, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -55,7 +54,6 @@ func (s *SellerService) GetPendingCatalogSyncSellers(domain, registryEnv, status
 
 	return &sellerPorts.SellerPendingCatalogSyncResponse{
 		Domain:       domain,
-		RegistryEnv:  registryEnv,
 		StatusFilter: statusFilter,
 		Sellers:      sellers,
 		Page: sellerPorts.PageInfo{
@@ -66,13 +64,23 @@ func (s *SellerService) GetPendingCatalogSyncSellers(domain, registryEnv, status
 	}, nil
 }
 
-func (s *SellerService) GetSyncStatus(sellerID, domain, registryEnv string) (*sellerPorts.SellerCatalogSyncStatusResponse, error) {
-	seller, err := s.repo.GetSellerByID(sellerID, domain, registryEnv)
+func (s *SellerService) GetSyncStatus(sellerID, domain string) (*sellerPorts.SellerCatalogSyncStatusResponse, error) {
+	filters := map[string]interface{}{
+		"seller_id": sellerID,
+		"domain":    domain,
+	}
+	sellers, err := s.repo.GetSellersByFilters(filters)
 	if err != nil {
-		return nil, err // Could be gorm.ErrRecordNotFound
+		return nil, err // Could be gorm.ErrRecordNotFound if no seller found
 	}
 
-	state, err := s.repo.GetSellerCatalogState(sellerID, domain, registryEnv)
+	if len(sellers) == 0 {
+		return nil, gorm.ErrRecordNotFound // Explicitly return not found if no seller matches
+	}
+	// Assuming sellerID + domain is a unique combination, we take the first result.
+	seller := &sellers[0]
+
+	state, err := s.repo.GetSellerCatalogState(sellerID, domain)
 	if err != nil && err != gorm.ErrRecordNotFound {
 		return nil, err
 	}
@@ -82,7 +90,6 @@ func (s *SellerService) GetSyncStatus(sellerID, domain, registryEnv string) (*se
 		return &sellerPorts.SellerCatalogSyncStatusResponse{
 			SellerID:           seller.SellerID,
 			Domain:             seller.Domain,
-			RegistryEnv:        seller.RegistryEnv,
 			Status:             string(sellerPorts.CatalogStatusNotSynced), // Default status
 			RegistryLastSeenAt: seller.LastSeenInReg,
 		}, nil
@@ -91,7 +98,6 @@ func (s *SellerService) GetSyncStatus(sellerID, domain, registryEnv string) (*se
 	return &sellerPorts.SellerCatalogSyncStatusResponse{
 		SellerID:           state.SellerID,
 		Domain:             state.Domain,
-		RegistryEnv:        state.RegistryEnv,
 		Status:             string(state.Status),
 		LastPullAt:         state.LastPullAt,
 		LastSuccessAt:      state.LastSuccessAt,
@@ -104,9 +110,8 @@ func (s *SellerService) GetSyncStatus(sellerID, domain, registryEnv string) (*se
 func (s *SellerService) SyncRegistry(req sellerPorts.SellerRegistrySyncRequest) (*sellerPorts.SellerRegistrySyncResponse, error) {
 	runAt := time.Now()
 	response := &sellerPorts.SellerRegistrySyncResponse{
-		RegistryEnv: req.RegistryEnv,
-		RunAt:       runAt.Format(time.RFC3339),
-		Domains:     []sellerPorts.SellerDomainSyncSummary{},
+		RunAt:   runAt.Format(time.RFC3339),
+		Domains: []sellerPorts.SellerDomainSyncSummary{},
 	}
 
 	for _, domain := range req.Domains {
@@ -119,7 +124,7 @@ func (s *SellerService) SyncRegistry(req sellerPorts.SellerRegistrySyncRequest) 
 		}
 		summary.TotalSellersInRegistry = len(registrySellers)
 
-		dbSellers, err := s.repo.GetSellersByDomainAndRegistry(domain, req.RegistryEnv)
+		dbSellers, err := s.repo.GetSellersByFilters(map[string]interface{}{"domain": domain, "active": true})
 		if err != nil {
 			log.Error(context.Background(), err, fmt.Sprintf("Failed to fetch sellers from DB for domain %s", domain))
 			continue
@@ -133,7 +138,7 @@ func (s *SellerService) SyncRegistry(req sellerPorts.SellerRegistrySyncRequest) 
 			raw, _ := json.Marshal(sub)
 
 			seller := sellerPorts.Seller{
-				SellerID: sub.SubscriberID, Domain: sub.Domain, RegistryEnv: req.RegistryEnv,
+				SellerID: sub.SubscriberID, Domain: sub.Domain,
 				Status: sub.Status, Type: "BPP", SubscriberURL: sub.SubscriberID,
 				Country: sub.Country, City: sub.City, ValidFrom: validFrom, ValidUntil: validUntil,
 				Active: true, LastSeenInReg: now, RegistryRaw: string(raw),
@@ -180,7 +185,7 @@ func (s *SellerService) SyncRegistry(req sellerPorts.SellerRegistrySyncRequest) 
 		}
 		for _, seller := range sellersToInsert {
 			state := &sellerPorts.SellerCatalogState{
-				SellerID: seller.SellerID, Domain: domain, RegistryEnv: req.RegistryEnv,
+				SellerID: seller.SellerID, Domain: domain,
 				Status: sellerPorts.CatalogStatusNotSynced,
 			}
 			if err := s.repo.UpsertCatalogState(state); err != nil {
@@ -188,7 +193,7 @@ func (s *SellerService) SyncRegistry(req sellerPorts.SellerRegistrySyncRequest) 
 			}
 		}
 		if len(removedSellerIDs) > 0 {
-			if err := s.repo.DeactivateSellers(removedSellerIDs, domain, req.RegistryEnv); err != nil {
+			if err := s.repo.DeactivateSellers(removedSellerIDs, domain); err != nil {
 				log.Error(context.Background(), err, "Failed to deactivate sellers")
 			}
 		}

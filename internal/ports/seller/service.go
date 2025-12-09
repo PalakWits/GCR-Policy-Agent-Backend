@@ -1,19 +1,28 @@
 package seller
 
 import (
+
 	"adapter/internal/shared/log"
+
 	"adapter/internal/shared/utils"
 
 	"context"
+
 	"fmt"
 
+	"strings"
+
+
+
 	"gorm.io/gorm"
+
 	"gorm.io/gorm/clause"
+
 )
 
 type Service interface {
-	GetPendingCatalogSyncSellers(domain, registryEnv, status string, limit, page, offset int) (*SellerPendingCatalogSyncResponse, error)
-	GetSyncStatus(sellerID, domain, registryEnv string) (*SellerCatalogSyncStatusResponse, error)
+	GetPendingCatalogSyncSellers(domain, status string, limit, page, offset int) (*SellerPendingCatalogSyncResponse, error)
+	GetSyncStatus(sellerID, domain string) (*SellerCatalogSyncStatusResponse, error)
 }
 
 type SellerGormRepository struct {
@@ -33,7 +42,7 @@ func (r *SellerGormRepository) UpdateSellers(sellers []Seller) error {
 	log.Info(context.Background(), fmt.Sprintf("Attempting to update %d existing sellers...", len(sellers)))
 	return r.db.Transaction(func(tx *gorm.DB) error {
 		for _, seller := range sellers {
-			if err := tx.Model(&Seller{}).Where("seller_id = ? AND domain = ? AND registry_env = ?", seller.SellerID, seller.Domain, seller.RegistryEnv).Updates(seller).Error; err != nil {
+			if err := tx.Model(&Seller{}).Where("seller_id = ? AND domain = ?", seller.SellerID, seller.Domain).Updates(seller).Error; err != nil {
 				return err
 			}
 		}
@@ -49,39 +58,55 @@ func (r *SellerGormRepository) GetAllSellers() ([]Seller, error) {
 	return sellers, nil
 }
 
-func (r *SellerGormRepository) GetSellerByID(sellerID, domain, registryEnv string) (*Seller, error) {
-	var seller Seller
-	if err := r.db.Where("seller_id = ? AND domain = ? AND registry_env = ?", sellerID, domain, registryEnv).First(&seller).Error; err != nil {
-		return nil, err
-	}
-	return &seller, nil
-}
-
-func (r *SellerGormRepository) GetSellersByDomainAndRegistry(domain, registryEnv string) ([]Seller, error) {
+func (r *SellerGormRepository) GetSellersByFilters(filters map[string]interface{}) ([]Seller, error) {
 	var sellers []Seller
-	if err := r.db.Where("domain = ? AND registry_env = ? AND active = ?", domain, registryEnv, true).Find(&sellers).Error; err != nil {
+	query := r.db.Model(&Seller{})
+
+	for key, value := range filters {
+		switch v := value.(type) {
+		case string:
+			if key == "city" {
+				// Handle the special case for city with wildcard, also case-insensitive
+				query = query.Where("LOWER(city) = LOWER(?) OR city = ?", v, "*")
+			} else {
+				query = query.Where(fmt.Sprintf("LOWER(%s) = LOWER(?)", key), v)
+			}
+		case []string:
+			// GORM handles slice values as "IN" queries. Applying LOWER to each element.
+			lowerValues := make([]string, len(v))
+			for i, s := range v {
+				lowerValues[i] = strings.ToLower(s)
+			}
+			query = query.Where(fmt.Sprintf("LOWER(%s) IN ?", key), lowerValues)
+		default:
+			// For non-string types (like booleans or numbers), do a direct match
+			query = query.Where(fmt.Sprintf("%s = ?", key), v)
+		}
+	}
+
+	if err := query.Find(&sellers).Error; err != nil {
 		return nil, err
 	}
 	return sellers, nil
 }
 
-func (r *SellerGormRepository) DeactivateSellers(sellerIDs []string, domain, registryEnv string) error {
-	return r.db.Model(&Seller{}).Where("seller_id IN ? AND domain = ? AND registry_env = ?", sellerIDs, domain, registryEnv).Update("active", false).Error
+func (r *SellerGormRepository) DeactivateSellers(sellerIDs []string, domain string) error {
+	return r.db.Model(&Seller{}).Where("seller_id IN ? AND domain = ?", sellerIDs, domain).Update("active", false).Error
 }
 
 func (r *SellerGormRepository) UpsertCatalogState(state *SellerCatalogState) error {
 	return r.db.Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "seller_id"}, {Name: "domain"}, {Name: "registry_env"}},
+		Columns:   []clause.Column{{Name: "seller_id"}, {Name: "domain"}},
 		DoUpdates: clause.AssignmentColumns([]string{"status", "last_pull_at", "last_success_at", "last_error", "sync_version", "updated_at"}),
 	}).Create(state).Error
 }
 
-func (r *SellerGormRepository) GetPendingSellers(domain, registryEnv, status string, limit, offset int) ([]SellerInfo, error) {
+func (r *SellerGormRepository) GetPendingSellers(domain, status string, limit, offset int) ([]SellerInfo, error) {
 	var sellers []SellerInfo
 	query := r.db.Table("sellers as s").
 		Select("s.seller_id, scs.status, scs.last_pull_at, scs.last_success_at, scs.last_error").
-		Joins("LEFT JOIN seller_catalog_state scs ON s.seller_id = scs.seller_id AND s.domain = scs.domain AND s.registry_env = scs.registry_env").
-		Where("s.domain = ? AND s.registry_env = ? AND s.active = ?", domain, registryEnv, true)
+		Joins("LEFT JOIN seller_catalog_state scs ON s.seller_id = scs.seller_id AND s.domain = scs.domain").
+		Where("s.domain = ? AND s.active = ?", domain, true)
 
 	var statusConditions []string
 	var statusValues []interface{}
@@ -122,9 +147,9 @@ func (r *SellerGormRepository) GetPendingSellers(domain, registryEnv, status str
 	return sellers, err
 }
 
-func (r *SellerGormRepository) GetSellerCatalogState(sellerID, domain, registryEnv string) (*SellerCatalogState, error) {
+func (r *SellerGormRepository) GetSellerCatalogState(sellerID, domain string) (*SellerCatalogState, error) {
 	var state SellerCatalogState
-	if err := r.db.Where("seller_id = ? AND domain = ? AND registry_env = ?", sellerID, domain, registryEnv).First(&state).Error; err != nil {
+	if err := r.db.Where("seller_id = ? AND domain = ?", sellerID, domain).First(&state).Error; err != nil {
 		return nil, err
 	}
 	return &state, nil

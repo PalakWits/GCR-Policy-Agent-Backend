@@ -6,8 +6,9 @@ type AccessDecision string
 type DecisionSource string
 
 const (
-	DecisionAllowed AccessDecision = "ALLOWED"
-	DecisionDenied  AccessDecision = "DENIED"
+	DecisionAllowed       AccessDecision = "ALLOWED"
+	DecisionDenied        AccessDecision = "DENIED"
+	DecisionErrorOccurred AccessDecision = "ERROR_OCCURRED"
 )
 
 const (
@@ -19,7 +20,6 @@ const (
 type Seller struct {
 	SellerID      string    `json:"seller_id" gorm:"primaryKey;column:seller_id;type:text"`
 	Domain        string    `json:"domain" gorm:"primaryKey;column:domain;type:text"`
-	RegistryEnv   string    `json:"registry_env" gorm:"primaryKey;column:registry_env;type:text"`
 	Status        string    `json:"status" gorm:"column:status;type:text"`
 	Type          string    `json:"type" gorm:"column:type;type:text"`
 	SubscriberURL string    `json:"subscriber_url" gorm:"column:subscriber_url;type:text"`
@@ -50,7 +50,6 @@ const (
 type SellerCatalogState struct {
 	SellerID      string        `gorm:"primaryKey;column:seller_id;type:text"`
 	Domain        string        `gorm:"primaryKey;column:domain;type:text"`
-	RegistryEnv   string        `gorm:"primaryKey;column:registry_env;type:text"`
 	Status        CatalogStatus `gorm:"column:status;type:text"`
 	LastPullAt    *time.Time    `gorm:"column:last_pull_at;type:timestamptz"`
 	LastSuccessAt *time.Time    `gorm:"column:last_success_at;type:timestamptz"`

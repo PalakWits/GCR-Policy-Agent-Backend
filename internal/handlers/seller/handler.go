@@ -27,10 +27,10 @@ func (h *SellerHandler) SyncRegistry(c *fiber.Ctx) error {
 		})
 	}
 
-	if req.RegistryEnv == "" || len(req.Domains) == 0 {
+	if len(req.Domains) == 0 {
 		return c.Status(fiber.StatusBadRequest).JSON(utils.ApiResponse{
 			Success: false,
-			Message: "registry_env and domains are required",
+			Message: "domains are required",
 		})
 	}
 
@@ -57,7 +57,6 @@ func (h *SellerHandler) GetPendingCatalogSyncSellers(c *fiber.Ctx) error {
 			Message: constants.ErrDomainRequired,
 		})
 	}
-	registryEnv := c.Query("registry_env", "preprod")
 	status := c.Query("status")
 	limit := c.QueryInt("limit", 100)
 	page := c.QueryInt("page", 1)
@@ -66,7 +65,7 @@ func (h *SellerHandler) GetPendingCatalogSyncSellers(c *fiber.Ctx) error {
 		offset = 0
 	}
 
-	response, err := h.sellerService.GetPendingCatalogSyncSellers(domain, registryEnv, status, limit, page, offset)
+	response, err := h.sellerService.GetPendingCatalogSyncSellers(domain, status, limit, page, offset)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(utils.ApiResponse{
 			Success: false,
@@ -83,7 +82,6 @@ func (h *SellerHandler) GetPendingCatalogSyncSellers(c *fiber.Ctx) error {
 func (h *SellerHandler) GetSyncStatus(c *fiber.Ctx) error {
 	sellerID := c.Params("seller_id")
 	domain := c.Query("domain")
-	registryEnv := c.Query("registry_env", "preprod") // Default to "preprod"
 
 	if sellerID == "" || domain == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(utils.ApiResponse{
@@ -92,7 +90,7 @@ func (h *SellerHandler) GetSyncStatus(c *fiber.Ctx) error {
 		})
 	}
 
-	response, err := h.sellerService.GetSyncStatus(sellerID, domain, registryEnv)
+	response, err := h.sellerService.GetSyncStatus(sellerID, domain)
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return c.Status(fiber.StatusNotFound).JSON(utils.ApiResponse{

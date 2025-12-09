@@ -7,8 +7,10 @@ import (
 	"gorm.io/gorm"
 
 	"adapter/internal/config"
+	broadcastDomain "adapter/internal/domain/broadcast"
 	buyerDomain "adapter/internal/domain/buyer"
 	sellerDomain "adapter/internal/domain/seller"
+	broadcastHandler "adapter/internal/handlers/broadcast"
 	buyerHandler "adapter/internal/handlers/buyer"
 	sellerHandler "adapter/internal/handlers/seller"
 	buyerPorts "adapter/internal/ports/buyer"
@@ -20,11 +22,12 @@ import (
 )
 
 type Container struct {
-	Config        *config.Config
-	DB            *gorm.DB
-	CacheService  caching.CacheService
-	SellerHandler *sellerHandler.SellerHandler
-	BuyerHandler  *buyerHandler.BuyerHandler
+	Config           *config.Config
+	DB               *gorm.DB
+	CacheService     caching.CacheService
+	SellerHandler    *sellerHandler.SellerHandler
+	BuyerHandler     *buyerHandler.BuyerHandler
+	BroadcastHandler *broadcastHandler.BroadcastHandler
 }
 
 func (c *Container) Shutdown(ctx context.Context) error {
@@ -54,7 +57,7 @@ func InitContainer() (*Container, error) {
 	}
 
 	logger.Info(ctx, "Running database migrations...")
-	if err := database.AutoMigrate(&sellerPorts.Seller{}, &buyerPorts.Bap{}, &sellerPorts.SellerCatalogState{}, &buyerPorts.BapAccessPolicy{}); err != nil {
+	if err := database.AutoMigrate(&sellerPorts.Seller{}, &buyerPorts.Bap{}, &sellerPorts.SellerCatalogState{}, &buyerPorts.BapAccessPolicy{}, &buyerPorts.PermissionsJob{}); err != nil {
 		logger.Fatal(ctx, err, "Failed to run database migrations")
 		return nil, fmt.Errorf("failed to run database migrations: %w", err)
 	}
@@ -68,10 +71,14 @@ func InitContainer() (*Container, error) {
 	buyerService := buyerDomain.NewBuyerService(buyerRepo)
 	buyerHandler := buyerHandler.NewBuyerHandler(buyerService)
 
+	broadcastService := broadcastDomain.NewBroadcastService(buyerRepo, sellerRepo, cfg)
+	broadcastHandler := broadcastHandler.NewBroadcastHandler(broadcastService)
+
 	return &Container{
-		Config:        cfg,
-		DB:            database,
-		SellerHandler: sellerHandler,
-		BuyerHandler:  buyerHandler,
+		Config:           cfg,
+		DB:               database,
+		SellerHandler:    sellerHandler,
+		BuyerHandler:     buyerHandler,
+		BroadcastHandler: broadcastHandler,
 	}, err
 }

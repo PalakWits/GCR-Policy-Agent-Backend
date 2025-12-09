@@ -5,7 +5,6 @@ import "time"
 // SellerPendingCatalogSyncResponse defines the response body for the pending catalog sync sellers API
 type SellerPendingCatalogSyncResponse struct {
 	Domain       string       `json:"domain"`
-	RegistryEnv  string       `json:"registry_env"`
 	StatusFilter []string     `json:"status_filter"`
 	Sellers      []SellerInfo `json:"sellers"`
 	Page         PageInfo     `json:"page"`
@@ -31,7 +30,6 @@ type PageInfo struct {
 type SellerCatalogSyncStatusResponse struct {
 	SellerID           string     `json:"seller_id"`
 	Domain             string     `json:"domain"`
-	RegistryEnv        string     `json:"registry_env"`
 	Status             string     `json:"status"`
 	LastPullAt         *time.Time `json:"last_pull_at"`
 	LastSuccessAt      *time.Time `json:"last_success_at"`
@@ -44,7 +42,6 @@ type SellerCatalogSyncStatusResponse struct {
 type SellerPermissionsUpdateRequest struct {
 	SellerID       string     `json:"seller_id"`
 	Domain         string     `json:"domain"`
-	RegistryEnv    string     `json:"registry_env"`
 	BapID          string     `json:"bap_id"`
 	Decision       string     `json:"decision"`
 	DecisionSource string     `json:"decision_source"`
@@ -54,19 +51,17 @@ type SellerPermissionsUpdateRequest struct {
 
 // SellerPermissionsUpdateResponse defines the structure for a single permission update result
 type SellerPermissionsUpdateResponse struct {
-	SellerID    string `json:"seller_id"`
-	Domain      string `json:"domain"`
-	RegistryEnv string `json:"registry_env"`
-	BapID       string `json:"bap_id"`
-	Decision    string `json:"decision"`
-	Stored      bool   `json:"stored"`
+	SellerID string `json:"seller_id"`
+	Domain   string `json:"domain"`
+	BapID    string `json:"bap_id"`
+	Decision string `json:"decision"`
+	Stored   bool   `json:"stored"`
 }
 
 // SellerPermissionDetail provides detailed permission information for a single seller
 type SellerPermissionDetail struct {
 	SellerID       string     `json:"seller_id"`
 	Domain         string     `json:"domain"`
-	RegistryEnv    string     `json:"registry_env"`
 	BapID          string     `json:"bap_id"`
 	Decision       string     `json:"decision"`
 	DecisionSource *string    `json:"decision_source,omitempty"`
@@ -76,8 +71,7 @@ type SellerPermissionDetail struct {
 
 // SellerRegistrySyncRequest defines the request body for the /v1/internal/registry-sync API
 type SellerRegistrySyncRequest struct {
-	RegistryEnv string   `json:"registry_env"`
-	Domains     []string `json:"domains"`
+	Domains []string `json:"domains"`
 }
 
 // SellerDomainSyncSummary provides a summary of the sync operation for a single domain
@@ -91,7 +85,6 @@ type SellerDomainSyncSummary struct {
 
 // SellerRegistrySyncResponse defines the response body for the /v1/internal/registry-sync API
 type SellerRegistrySyncResponse struct {
-	RegistryEnv string                    `json:"registry_env"`
-	Domains     []SellerDomainSyncSummary `json:"domains"`
-	RunAt       string                    `json:"run_at"`
+	Domains []SellerDomainSyncSummary `json:"domains"`
+	RunAt   string                    `json:"run_at"`
 }

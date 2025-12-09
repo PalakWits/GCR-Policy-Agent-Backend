@@ -26,7 +26,6 @@ func (s *BuyerService) UpdateBapAccessPermissions(updates []sellerPorts.SellerPe
 		policy := buyerPorts.BapAccessPolicy{
 			SellerID:       update.SellerID,
 			Domain:         update.Domain,
-			RegistryEnv:    update.RegistryEnv,
 			BapID:          update.BapID,
 			Decision:       sellerPorts.AccessDecision(update.Decision),
 			DecisionSource: sellerPorts.DecisionSource(update.DecisionSource),
@@ -42,12 +41,11 @@ func (s *BuyerService) UpdateBapAccessPermissions(updates []sellerPorts.SellerPe
 		}
 
 		results = append(results, sellerPorts.SellerPermissionsUpdateResponse{
-			SellerID:    update.SellerID,
-			Domain:      update.Domain,
-			RegistryEnv: update.RegistryEnv,
-			BapID:       update.BapID,
-			Decision:    update.Decision,
-			Stored:      false, // Will be set to true after successful DB operation
+			SellerID: update.SellerID,
+			Domain:   update.Domain,
+			BapID:    update.BapID,
+			Decision: update.Decision,
+			Stored:   false, // Will be set to true after successful DB operation
 		})
 	}
 
@@ -93,7 +91,7 @@ func (s *BuyerService) QueryBapAccessPermissions(req buyerPorts.BapPermissionsQu
 		}
 	}
 
-	policies, err := s.repo.QueryBapAccessPolicies(req.BapID, req.Domain, req.RegistryEnv, req.SellerIDs)
+	policies, err := s.repo.QueryBapAccessPolicies(req.BapID, req.Domain, req.SellerIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -109,7 +107,6 @@ func (s *BuyerService) QueryBapAccessPermissions(req buyerPorts.BapPermissionsQu
 			permissions = append(permissions, sellerPorts.SellerPermissionDetail{
 				SellerID:       policy.SellerID,
 				Domain:         policy.Domain,
-				RegistryEnv:    policy.RegistryEnv,
 				BapID:          policy.BapID,
 				Decision:       string(policy.Decision),
 				DecisionSource: (*string)(&policy.DecisionSource),
@@ -118,11 +115,10 @@ func (s *BuyerService) QueryBapAccessPermissions(req buyerPorts.BapPermissionsQu
 			})
 		} else if req.IncludeNoPolicy {
 			permissions = append(permissions, sellerPorts.SellerPermissionDetail{
-				SellerID:    sellerID,
-				Domain:      req.Domain,
-				RegistryEnv: req.RegistryEnv,
-				BapID:       req.BapID,
-				Decision:    "NO_POLICY",
+				SellerID: sellerID,
+				Domain:   req.Domain,
+				BapID:    req.BapID,
+				Decision: "NO_POLICY",
 			})
 		}
 	}
@@ -130,7 +126,6 @@ func (s *BuyerService) QueryBapAccessPermissions(req buyerPorts.BapPermissionsQu
 	return &buyerPorts.BapPermissionsQueryResponse{
 		BapStatus:   bapStatus,
 		Domain:      req.Domain,
-		RegistryEnv: req.RegistryEnv,
 		Permissions: permissions,
 	}, nil
 }

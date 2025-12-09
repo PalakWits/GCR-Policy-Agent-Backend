@@ -4,7 +4,7 @@ const (
 	// General Errors
 	ErrInvalidRequestBody        = "Invalid request body"
 	ErrUpdatesArrayEmpty         = "updates array cannot be empty"
-	ErrRequiredPermissionsFields = "bap_id, domain, registry_env, and seller_ids are required"
+	ErrRequiredPermissionsFields = "bap_id, domain, and seller_ids are required"
 	ErrFailedToUpdatePermissions = "Failed to update permissions"
 	ErrFailedToQueryPermissions  = "Failed to query permissions"
 
@@ -15,8 +15,7 @@ const (
 	ErrInvalidOffsetParameter    = "Invalid offset parameter"
 	ErrGetPendingSellers         = "Failed to get pending catalog sync sellers"
 	ErrGetSyncStatus             = "Failed to get sync status"
-	ErrRecordNotFound            = "Record not found for the specified seller_id, domain, and registry_env"
-
+	ErrRecordNotFound            = "Record not found for the specified seller_id and domain"
 	// Registry Sync Errors
 	ErrFailedToStartRegistrySync = "Failed to start registry sync"
 )

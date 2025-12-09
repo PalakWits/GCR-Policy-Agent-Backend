@@ -16,7 +16,6 @@ type SellerService struct {
 	privateKey   string
 	subscriberID string
 	uniqueKeyID  string
-	registryEnv  string
 }
 
 type ONDCLookupRequest struct {

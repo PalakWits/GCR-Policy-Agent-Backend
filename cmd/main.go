@@ -42,6 +42,7 @@ func main() {
 	// Register routes
 	container.SellerHandler.RegisterRoutes(app)
 	container.BuyerHandler.RegisterRoutes(app)
+	container.BroadcastHandler.RegisterRoutes(app)
 
 	port := container.Config.Port
 

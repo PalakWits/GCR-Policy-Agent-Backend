@@ -60,7 +60,7 @@ func (h *BuyerHandler) QueryBapAccessPermissions(c *fiber.Ctx) error {
 		})
 	}
 
-	if req.BapID == "" || req.Domain == "" || req.RegistryEnv == "" || len(req.SellerIDs) == 0 {
+	if req.BapID == "" || req.Domain == "" || len(req.SellerIDs) == 0 {
 		return c.Status(fiber.StatusBadRequest).JSON(utils.ApiResponse{
 			Success: false,
 			Message: constants.ErrRequiredPermissionsFields,
