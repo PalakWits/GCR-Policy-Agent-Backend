@@ -1,7 +1,6 @@
 package seller
 
 import (
-
 	"adapter/internal/shared/log"
 
 	"adapter/internal/shared/utils"
@@ -12,12 +11,9 @@ import (
 
 	"strings"
 
-
-
 	"gorm.io/gorm"
 
 	"gorm.io/gorm/clause"
-
 )
 
 type Service interface {

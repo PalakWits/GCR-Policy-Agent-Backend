@@ -160,20 +160,20 @@ func (s *BroadcastService) sendSearchRequest(seller sellerPorts.Seller, req broa
 	expiresAt := now.Add(24 * time.Hour)
 
 	if s.config.MockSellerResponse {
-				log.Infof(ctx, "MOCK_SELLER_RESPONSE is true. Returning mock ACK for seller %s", seller.SellerID)
-				// Construct a mock ACK response to simulate success
-				reason := "ALLOWED for testing"
-				policy = &buyer.BapAccessPolicy{
-					SellerID:    seller.SellerID,
-					Domain:      req.SearchPayload.Context.Domain,
-					BapID:       req.SearchPayload.Context.BapID,
-					Decision:    sellerPorts.DecisionAllowed,
-					DecidedAt:   now,
-					ExpiresAt:   &expiresAt,
-					Reason:      &reason,
-				}
-			} else {
-		
+		log.Infof(ctx, "MOCK_SELLER_RESPONSE is true. Returning mock ACK for seller %s", seller.SellerID)
+		// Construct a mock ACK response to simulate success
+		reason := "ALLOWED for testing"
+		policy = &buyer.BapAccessPolicy{
+			SellerID:  seller.SellerID,
+			Domain:    req.SearchPayload.Context.Domain,
+			BapID:     req.SearchPayload.Context.BapID,
+			Decision:  sellerPorts.DecisionAllowed,
+			DecidedAt: now,
+			ExpiresAt: &expiresAt,
+			Reason:    &reason,
+		}
+	} else {
+
 		searchReqPayload := map[string]interface{}{
 			"context": req.SearchPayload.Context,
 			"message": req.SearchPayload.Message,
