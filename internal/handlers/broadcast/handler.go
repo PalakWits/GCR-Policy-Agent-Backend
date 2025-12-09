@@ -7,6 +7,8 @@ import (
 	"adapter/internal/shared/utils"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/google/uuid"
+	"gorm.io/gorm"
 )
 
 type BroadcastHandler struct {
@@ -26,7 +28,8 @@ func (h *BroadcastHandler) BroadcastPermissions(c *fiber.Ctx) error {
 		})
 	}
 
-	if err := h.service.BroadcastPermissions(req); err != nil {
+	job, err := h.service.BroadcastPermissions(req)
+	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(utils.ApiResponse{
 			Success: false,
 			Message: err.Error(),
@@ -35,20 +38,28 @@ func (h *BroadcastHandler) BroadcastPermissions(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(utils.ApiResponse{
 		Success: true,
 		Message: "Broadcast initiated successfully",
+		Data:    job,
 	})
 }
 
 func (h *BroadcastHandler) GetBroadcastStatus(c *fiber.Ctx) error {
-	bapID := c.Params("bap_id")
-	if bapID == "" {
+	jobIDStr := c.Params("job_id")
+	jobID, err := uuid.Parse(jobIDStr)
+	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(utils.ApiResponse{
 			Success: false,
-			Message: "bap_id is required",
+			Message: "Invalid job_id format",
 		})
 	}
 
-	job, err := h.service.GetBroadcastStatus(bapID)
+	job, err := h.service.GetBroadcastStatus(jobID)
 	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return c.Status(fiber.StatusNotFound).JSON(utils.ApiResponse{
+				Success: false,
+				Message: "Broadcast job not found",
+			})
+		}
 		return c.Status(fiber.StatusInternalServerError).JSON(utils.ApiResponse{
 			Success: false,
 			Message: err.Error(),

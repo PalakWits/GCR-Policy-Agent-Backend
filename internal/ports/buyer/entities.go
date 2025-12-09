@@ -35,7 +35,7 @@ func (BapAccessPolicy) TableName() string {
 }
 
 type PermissionsJob struct {
-	ID        uuid.UUID `json:"id" gorm:"type:uuid;default:gen_random_uuid();primary_key"`
+	ID        uuid.UUID `json:"job_id" gorm:"type:uuid;default:gen_random_uuid();primary_key"`
 	BapID     string    `json:"bap_id" gorm:"not null"`
 	Status    string    `json:"status" gorm:"not null"`
 	CreatedAt time.Time `json:"created_at"`

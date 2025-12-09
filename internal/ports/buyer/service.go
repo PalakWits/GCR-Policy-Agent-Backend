@@ -1,6 +1,7 @@
 package buyer
 
 import (
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -61,13 +62,13 @@ func (r *BuyerRepository) CreatePermissionsJob(job *PermissionsJob) error {
 	return r.db.Create(job).Error
 }
 
-func (r *BuyerRepository) UpdatePermissionsJobStatus(bapID, status string) error {
-	return r.db.Model(&PermissionsJob{}).Where("bap_id = ?", bapID).Update("status", status).Error
+func (r *BuyerRepository) UpdatePermissionsJobStatus(jobID uuid.UUID, status string) error {
+	return r.db.Model(&PermissionsJob{}).Where("id = ?", jobID).Update("status", status).Error
 }
 
-func (r *BuyerRepository) GetPermissionsJobStatus(bapID string) (*PermissionsJob, error) {
+func (r *BuyerRepository) GetPermissionsJobByID(jobID uuid.UUID) (*PermissionsJob, error) {
 	var job PermissionsJob
-	if err := r.db.Where("bap_id = ?", bapID).First(&job).Error; err != nil {
+	if err := r.db.Where("id = ?", jobID).First(&job).Error; err != nil {
 		return nil, err
 	}
 	return &job, nil

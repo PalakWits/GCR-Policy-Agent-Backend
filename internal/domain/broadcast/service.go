@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/go-resty/resty/v2"
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 	url_pkg "net/url"
 	"path"
@@ -33,17 +34,17 @@ func NewBroadcastService(buyerRepo buyer.PermissionsRepository, sellerRepo selle
 	}
 }
 
-func (s *BroadcastService) BroadcastPermissions(req broadcast.BroadcastRequest) error {
+func (s *BroadcastService) BroadcastPermissions(req broadcast.BroadcastRequest) (*buyer.PermissionsJob, error) {
 	ctx := context.Background() // Initialize context for logging
 
 	if req.SearchPayload == nil || req.SearchPayload.Context == nil {
 		log.Errorf(ctx, nil, "search_payload and its context are required in broadcast request")
-		return fmt.Errorf("search_payload and its context are required")
+		return nil, fmt.Errorf("search_payload and its context are required")
 	}
 	bapID := req.SearchPayload.Context.BapID
 	if bapID == "" {
 		log.Errorf(ctx, nil, "bap_id is required in search_payload context")
-		return fmt.Errorf("bap_id is required")
+		return nil, fmt.Errorf("bap_id is required")
 	}
 
 	// Check if BAP exists, create if not.
@@ -54,27 +55,12 @@ func (s *BroadcastService) BroadcastPermissions(req broadcast.BroadcastRequest) 
 			newBap := buyer.Bap{BapID: bapID, FirstSeenAt: now, LastSeenAt: now}
 			if err := s.buyerRepo.UpsertBaps(map[string]buyer.Bap{bapID: newBap}); err != nil {
 				log.Errorf(ctx, err, "Failed to create new BAP with id %s", bapID)
-				return fmt.Errorf("failed to create new BAP with id %s: %w", bapID, err)
+				return nil, fmt.Errorf("failed to create new BAP with id %s: %w", bapID, err)
 			}
 		} else {
 			log.Errorf(ctx, err, "Database error when trying to find BAP by ID %s", bapID)
-			return err
+			return nil, err
 		}
-	}
-
-	policy, err := s.buyerRepo.GetBapPolicy(bapID)
-	if err != nil {
-		// This check is tricky now because GetBapPolicy might return gorm.ErrRecordNotFound
-		// which is a normal case here. We only care about actual errors.
-		if err != gorm.ErrRecordNotFound {
-			log.Errorf(ctx, err, "Database error when trying to get BAP policy for bap_id %s", bapID)
-			return err
-		}
-	}
-
-	if policy != nil {
-		log.Warnf(ctx, "Policy already exists for bap_id: %s. Not initiating broadcast.", bapID)
-		return fmt.Errorf("policy already exists for bap_id: %s", bapID)
 	}
 
 	job := &buyer.PermissionsJob{
@@ -84,16 +70,16 @@ func (s *BroadcastService) BroadcastPermissions(req broadcast.BroadcastRequest) 
 
 	if err := s.buyerRepo.CreatePermissionsJob(job); err != nil {
 		log.Errorf(ctx, err, "Failed to create permissions job for bap_id %s", bapID)
-		return err
+		return nil, err
 	}
 
-	log.Infof(ctx, "Initiating broadcast for bap_id %s", bapID)
-	go s.startBroadcast(req)
+	log.Infof(ctx, "Initiating broadcast for bap_id %s with job_id %s", bapID, job.ID)
+	go s.startBroadcast(req, job.ID)
 
-	return nil
+	return job, nil
 }
 
-func (s *BroadcastService) startBroadcast(req broadcast.BroadcastRequest) {
+func (s *BroadcastService) startBroadcast(req broadcast.BroadcastRequest, jobID uuid.UUID) {
 	ctx := context.Background()
 	domain := req.SearchPayload.Context.Domain
 	sellerIDs := req.SellerIDs
@@ -114,18 +100,18 @@ func (s *BroadcastService) startBroadcast(req broadcast.BroadcastRequest) {
 
 	sellers, err := s.sellerRepo.GetSellersByFilters(filters)
 	if err != nil {
-		log.Errorf(ctx, err, "Failed to fetch sellers for broadcast")
-		s.updateJobStatus(req.SearchPayload.Context.BapID, "FAILED")
+		log.Errorf(ctx, err, "Failed to fetch sellers for broadcast job %s", jobID)
+		s.updateJobStatus(jobID, "FAILED")
 		return
 	}
 
 	if len(sellers) == 0 {
-		log.Warnf(ctx, "No sellers found for broadcast criteria. Marking job as COMPLETED.")
-		s.updateJobStatus(req.SearchPayload.Context.BapID, "COMPLETED")
+		log.Warnf(ctx, "No sellers found for broadcast criteria for job %s. Marking job as COMPLETED.", jobID)
+		s.updateJobStatus(jobID, "COMPLETED")
 		return
 	}
 
-	log.Infof(ctx, "Starting broadcast to %d sellers for bap_id %s", len(sellers), req.SearchPayload.Context.BapID)
+	log.Infof(ctx, "Starting broadcast to %d sellers for job %s", len(sellers), jobID)
 	done := make(chan bool, len(sellers))
 
 	for _, sel := range sellers {
@@ -136,19 +122,19 @@ func (s *BroadcastService) startBroadcast(req broadcast.BroadcastRequest) {
 		<-done
 	}
 
-	log.Infof(ctx, "Broadcast finished for bap_id %s. All sellers have responded.", req.SearchPayload.Context.BapID)
-	s.updateJobStatus(req.SearchPayload.Context.BapID, "COMPLETED")
+	log.Infof(ctx, "Broadcast finished for job %s. All sellers have responded.", jobID)
+	s.updateJobStatus(jobID, "COMPLETED")
 }
 
-func (s *BroadcastService) updateJobStatus(bapID, status string) {
-	err := s.buyerRepo.UpdatePermissionsJobStatus(bapID, status)
+func (s *BroadcastService) updateJobStatus(jobID uuid.UUID, status string) {
+	err := s.buyerRepo.UpdatePermissionsJobStatus(jobID, status)
 	if err != nil {
-		// Handle error
+		log.Errorf(context.Background(), err, "Failed to update status for job %s", jobID)
 	}
 }
 
-func (s *BroadcastService) GetBroadcastStatus(bapID string) (*buyer.PermissionsJob, error) {
-	return s.buyerRepo.GetPermissionsJobStatus(bapID)
+func (s *BroadcastService) GetBroadcastStatus(jobID uuid.UUID) (*buyer.PermissionsJob, error) {
+	return s.buyerRepo.GetPermissionsJobByID(jobID)
 }
 
 func (s *BroadcastService) sendSearchRequest(seller sellerPorts.Seller, req broadcast.BroadcastRequest, done chan bool) {
@@ -164,13 +150,14 @@ func (s *BroadcastService) sendSearchRequest(seller sellerPorts.Seller, req broa
 		// Construct a mock ACK response to simulate success
 		reason := "ALLOWED for testing"
 		policy = &buyer.BapAccessPolicy{
-			SellerID:  seller.SellerID,
-			Domain:    req.SearchPayload.Context.Domain,
-			BapID:     req.SearchPayload.Context.BapID,
-			Decision:  sellerPorts.DecisionAllowed,
-			DecidedAt: now,
-			ExpiresAt: &expiresAt,
-			Reason:    &reason,
+			SellerID:       seller.SellerID,
+			Domain:         req.SearchPayload.Context.Domain,
+			BapID:          req.SearchPayload.Context.BapID,
+			Decision:       sellerPorts.DecisionAllowed,
+			DecisionSource: sellerPorts.SourceManualOverride,
+			DecidedAt:      now,
+			ExpiresAt:      &expiresAt,
+			Reason:         &reason,
 		}
 	} else {
 
